@@ -223,7 +223,6 @@ function publishExamToStudents() {
 
     localStorage.setItem('cma_published_exam', JSON.stringify(examPayload));
 
-    // Archive Exam for Admin
     let archives = JSON.parse(localStorage.getItem('cma_exam_archives')) || [];
     archives.push(examPayload);
     localStorage.setItem('cma_exam_archives', JSON.stringify(archives));
@@ -419,7 +418,6 @@ function finishSession() {
         document.getElementById('res-score').innerText = `${totalMarksObtained} / ${maxPossibleMarks} Marks`;
         document.getElementById('exam-review-section').classList.remove('hidden');
 
-        // Save to Student Exam Archives
         const examRecord = {
             id: "RESULT_" + Date.now(),
             studentName: currentLoggedInUser.name,
@@ -460,7 +458,6 @@ function renderExamReviewList(containerId, questions, userAns) {
     });
 }
 
-// RENDER STUDENT PREVIOUS EXAM HISTORY ARCHIVE
 function renderStudentExamHistory() {
     const container = document.getElementById('student-history-list');
     container.innerHTML = "";
@@ -511,7 +508,6 @@ function generateAIQuestionsForStudent() {
     displayCurrentQuestion();
 }
 
-// ADMIN LEADERBOARD & ARCHIVE
 function renderAnalyticsLeaderboard() {
     const table = document.getElementById('student-results-table');
     const topList = document.getElementById('top-performers-list');
@@ -593,7 +589,6 @@ function toggleArchiveDetail(index) {
     }
 }
 
-// PDF EXPORTS
 function exportAnalyticsPDF() {
     const element = document.getElementById('analytics-pdf-content');
     html2pdf().from(element).save('Optim_Student_Performance_Leaderboard.pdf');

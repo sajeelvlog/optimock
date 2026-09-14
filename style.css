@@ -42,13 +42,14 @@ body {
 
 /* LOGO STYLES */
 .logo-box {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
 }
 
 .login-logo {
     margin-bottom: 12px;
+    justify-content: center;
 }
 
 .login-logo img {
