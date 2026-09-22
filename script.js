@@ -18,6 +18,10 @@ let firebaseApi = null;
 let portalIsReady = false;
 let isSubmitting = false;
 
+// OTP STATE FOR STUDENT LOGIN
+let pendingPhoneVerification = null;
+let generatedOTPCode = null;
+
 const DATABASE_ROOT = "optimPortal";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -77,8 +81,8 @@ function isFirebaseConfigured() {
 function createInitialPortalData() {
     return {
         students: {
-            "9876543210": { name: "Rahul Sharma", phone: "9876543210", pass: "123456" },
-            "9123456789": { name: "Ananya Nair", phone: "9123456789", pass: "123456" }
+            "9876543210": { name: "Rahul Sharma", phone: "9876543210" },
+            "9123456789": { name: "Ananya Nair", phone: "9123456789" }
         },
         masterQuestionPool: [],
         examArchives: {},
@@ -166,39 +170,85 @@ function isVisible(id) {
 
 function handleLogin(event) {
     event.preventDefault();
-
     if (!requireRealtimeConnection()) return;
 
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value.trim();
 
-    if (username === "admin" && password === "adminpass") {
-        document.getElementById("login-screen").classList.add("hidden");
-        document.getElementById("admin-screen").classList.remove("hidden");
-        switchAdminTab("exam-gen");
-        renderRegisteredStudents();
-        renderAnalyticsLeaderboard();
-        renderArchive();
+    // Admin login path (remains password-based)
+    if (username === "admin") {
+        if (password === "adminpass") {
+            document.getElementById("login-screen").classList.add("hidden");
+            document.getElementById("admin-screen").classList.remove("hidden");
+            switchAdminTab("exam-gen");
+            renderRegisteredStudents();
+            renderAnalyticsLeaderboard();
+            renderArchive();
+        } else {
+            alert("Incorrect admin password.");
+        }
         return;
     }
 
-    const student = registeredStudents.find(item => item.phone === username && item.pass === password);
-    if (!student) {
-        alert("Invalid credentials. Enter a registered phone number and password.");
-        return;
-    }
+    // Student Login with OTP Flow
+    if (!pendingPhoneVerification) {
+        // Step 1: Verify student mobile number exists in registry
+        const student = registeredStudents.find(item => item.phone === username);
+        if (!student) {
+            alert("Mobile number not found in registered database. Please contact the administrator.");
+            return;
+        }
 
-    currentLoggedInUser = student;
-    document.getElementById("display-student-name").innerText = student.name;
-    document.getElementById("login-screen").classList.add("hidden");
-    document.getElementById("student-screen").classList.remove("hidden");
-    switchStudentTab("practice");
+        // Generate a 6-digit random verification code
+        generatedOTPCode = Math.floor(100000 + Math.random() * 900000).toString();
+        pendingPhoneVerification = student;
+
+        // Display OTP alert for verification purposes
+        alert("OTP sent to " + student.phone + "\n[Test Mode OTP Code]: " + generatedOTPCode);
+
+        // Switch form elements to OTP verification view
+        document.getElementById("login-title").innerText = "Verify OTP";
+        document.getElementById("username").disabled = true;
+        document.getElementById("password-group").classList.add("hidden");
+        document.getElementById("otp-group").classList.remove("hidden");
+        document.getElementById("login-action-btn").innerText = "Verify & Login";
+        document.getElementById("back-to-phone-btn").classList.remove("hidden");
+        document.getElementById("otp-input").focus();
+    } else {
+        // Step 2: Validate entered OTP code
+        const enteredOtp = document.getElementById("otp-input").value.trim();
+        if (enteredOtp === generatedOTPCode) {
+            currentLoggedInUser = pendingPhoneVerification;
+            resetLoginStep();
+            document.getElementById("display-student-name").innerText = currentLoggedInUser.name;
+            document.getElementById("login-screen").classList.add("hidden");
+            document.getElementById("student-screen").classList.remove("hidden");
+            switchStudentTab("practice");
+        } else {
+            alert("Invalid OTP code. Please try again.");
+        }
+    }
+}
+
+function resetLoginStep() {
+    pendingPhoneVerification = null;
+    generatedOTPCode = null;
+    document.getElementById("login-title").innerText = "Portal Login";
+    document.getElementById("username").disabled = false;
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+    document.getElementById("otp-input").value = "";
+    document.getElementById("password-group").classList.remove("hidden");
+    document.getElementById("otp-group").classList.add("hidden");
+    document.getElementById("login-action-btn").innerText = "Proceed / Send OTP";
+    document.getElementById("back-to-phone-btn").classList.add("hidden");
 }
 
 function logout() {
     clearInterval(timerInterval);
     activeSessionExam = null;
     currentLoggedInUser = null;
+    resetLoginStep();
     document.getElementById("admin-screen").classList.add("hidden");
     document.getElementById("student-screen").classList.add("hidden");
     document.getElementById("login-screen").classList.remove("hidden");
@@ -240,15 +290,14 @@ async function registerNewStudent() {
 
     const name = document.getElementById("new-std-name").value.trim();
     const phone = document.getElementById("new-std-phone").value.trim();
-    const pass = document.getElementById("new-std-pass").value.trim();
 
-    if (!name || !phone || !pass) {
+    if (!name || !phone) {
         alert("Please fill all student details.");
         return;
     }
 
     if (!/^[0-9]{10,15}$/.test(phone)) {
-        alert("Enter a phone number using 10 to 15 digits.");
+        alert("Enter a valid phone number using 10 to 15 digits.");
         return;
     }
 
@@ -258,10 +307,9 @@ async function registerNewStudent() {
     }
 
     try {
-        await firebaseApi.set(portalRef("students/" + phone), { name, phone, pass });
+        await firebaseApi.set(portalRef("students/" + phone), { name, phone });
         document.getElementById("new-std-name").value = "";
         document.getElementById("new-std-phone").value = "";
-        document.getElementById("new-std-pass").value = "";
         alert("Student " + name + " registered successfully.");
     } catch (error) {
         console.error("Could not register student:", error);
@@ -272,7 +320,7 @@ async function registerNewStudent() {
 function renderRegisteredStudents() {
     const table = document.getElementById("registered-students-table");
     if (!registeredStudents.length) {
-        table.innerHTML = "<tr><td colspan='4'>No students registered yet.</td></tr>";
+        table.innerHTML = "<tr><td colspan='3'>No students registered yet.</td></tr>";
         return;
     }
 
@@ -280,7 +328,6 @@ function renderRegisteredStudents() {
         return "<tr>" +
             "<td><b>" + escapeHtml(student.name) + "</b></td>" +
             "<td>" + escapeHtml(student.phone) + "</td>" +
-            "<td><code>••••••</code></td>" +
             "<td><button class='btn btn-danger' style='padding:4px 10px; font-size:0.75rem;' onclick=\"deleteStudent('" + student.phone + "')\">Remove</button></td>" +
             "</tr>";
     }).join("");
@@ -294,16 +341,16 @@ async function deleteStudent(phone) {
         await firebaseApi.remove(portalRef("students/" + phone));
     } catch (error) {
         console.error("Could not remove student:", error);
-        alert("Student could not be removed. Check the Firebase connection.");
+        alert("Student could not be removed.");
     }
 }
 
-// PDF PROCESSING AND EXAM SETUP
+// PDF PROCESSING & ORDERED QUESTION GENERATION
 async function handlePDFUpload(event) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    document.getElementById("file-status").innerText = "Extracting raw text from uploaded files...";
+    document.getElementById("file-status").innerText = "Extracting raw structured text from documents...";
     extractedPDFText = "";
 
     try {
@@ -315,10 +362,10 @@ async function handlePDFUpload(event) {
                 extractedPDFText += "\n" + await file.text();
             }
         }
-        document.getElementById("file-status").innerText = "Ingested text from " + files.length + " document(s).";
+        document.getElementById("file-status").innerText = "Successfully extracted text from " + files.length + " file(s).";
     } catch (error) {
-        console.error("PDF extraction failed:", error);
-        document.getElementById("file-status").innerText = "Could not read one of the selected files.";
+        console.error("Extraction failed:", error);
+        document.getElementById("file-status").innerText = "Could not read reference document.";
     }
 }
 
@@ -350,27 +397,31 @@ async function generatePDFQuestions() {
     if (!requireRealtimeConnection()) return;
 
     if (!extractedPDFText || extractedPDFText.trim().length === 0) {
-        alert("Upload PDF reference documents first.");
+        alert("Please upload reference text or PDF documents first.");
         return;
     }
 
-    const requestedCount = parseInt(document.getElementById("required-q-count").value, 10) || 20;
-    const sentences = extractedPDFText.split("\n").map(item => item.trim()).filter(item => item.length > 30);
+    const requestedCount = parseInt(document.getElementById("required-q-count").value, 10) || 10;
+    
+    const rawSentences = extractedPDFText
+        .split(/\r?\n|\. |\? |\! /)
+        .map(item => item.trim())
+        .filter(item => item.length > 25);
+
     const generatedQuestions = [];
 
-    for (let index = 0; index < requestedCount + 10; index += 1) {
-        const referenceSnippet = sentences[index % sentences.length] || "What principle governs section concept " + (index + 1) + "?";
-        const topicWords = referenceSnippet.split(" ");
-        const coreKeyword = topicWords[0] || "Concept";
-        const cleanQuestion = referenceSnippet.length > 100 ? referenceSnippet.substring(0, 100) + "?" : referenceSnippet;
+    for (let index = 0; index < requestedCount; index += 1) {
+        const sentence = rawSentences[index % rawSentences.length] || ("Reference core item point " + (index + 1));
+        const cleanQuestion = sentence.endsWith("?") ? sentence : sentence + "?";
 
         generatedQuestions.push({
-            cleanQuestion,
+            id: index + 1,
+            cleanQuestion: cleanQuestion,
             options: [
-                "Primary directive for " + coreKeyword,
-                "Secondary operational rule",
-                "Disclose as non-operational note",
-                "Defer recognition under guidelines"
+                "Valid operational rule for " + cleanQuestion.substring(0, 20) + "...",
+                "Alternative secondary clause interpretation",
+                "Conditional exemption guideline",
+                "Non-applicable provision context"
             ],
             correct: 0
         });
@@ -380,10 +431,10 @@ async function generatePDFQuestions() {
         await firebaseApi.set(portalRef("masterQuestionPool"), generatedQuestions);
         masterQuestionPool = generatedQuestions;
         document.getElementById("preview-count").innerText = generatedQuestions.length;
-        alert("Generated " + generatedQuestions.length + " master questions. They are now available on every device.");
+        alert("Generated " + generatedQuestions.length + " perfectly ordered questions in sequence.");
     } catch (error) {
-        console.error("Could not save the question pool:", error);
-        alert("The question pool could not be saved. Check the Firebase connection.");
+        console.error("Could not save question pool:", error);
+        alert("Error saving questions to database.");
     }
 }
 
@@ -391,15 +442,16 @@ async function publishExamToStudents() {
     if (!requireRealtimeConnection()) return;
 
     if (masterQuestionPool.length === 0) {
-        alert("Process PDF materials first.");
+        alert("Process reference files and build the master question pool first.");
         return;
     }
 
     const duration = document.getElementById("exam-duration").value;
-    const requiredCount = parseInt(document.getElementById("required-q-count").value, 10) || 20;
+    const requiredCount = parseInt(document.getElementById("required-q-count").value, 10) || masterQuestionPool.length;
     const title = document.getElementById("exam-title-input").value.trim() || "Live Standard Exam";
     const markPerCorrect = parseFloat(document.getElementById("mark-per-correct").value) || 1;
     const markPerWrong = parseFloat(document.getElementById("mark-per-wrong").value) || 0;
+
     const examPayload = {
         id: "EXAM_" + Date.now(),
         title,
@@ -414,19 +466,19 @@ async function publishExamToStudents() {
     };
 
     try {
-        const changes = {
+        const updates = {
             publishedExam: examPayload
         };
-        changes["examArchives/" + examPayload.id] = examPayload;
-        await firebaseApi.update(portalRef(), changes);
-        alert("Live exam " + title + " published. Every open student portal updates now.");
+        updates["examArchives/" + examPayload.id] = examPayload;
+        await firebaseApi.update(portalRef(), updates);
+        alert("Exam published successfully! All candidates can now attend simultaneously.");
     } catch (error) {
         console.error("Could not publish exam:", error);
-        alert("The exam could not be published. Check the Firebase connection.");
+        alert("Failed to publish exam.");
     }
 }
 
-// STUDENT TABS AND LOGIC
+// STUDENT TABS & SESSION LOGIC WITH PAUSE/RESUME & CONTINUITY
 function switchStudentTab(tab) {
     activeMode = tab;
     activeSessionExam = null;
@@ -439,7 +491,7 @@ function switchStudentTab(tab) {
     if (tab === "practice") {
         document.getElementById("btn-practice-tab").classList.add("active");
         document.getElementById("session-title").innerText = "Unlimited Practice Area";
-        document.getElementById("session-desc").innerText = "Practice mode is always open. Practice questions freely to build your knowledge without time stress.";
+        document.getElementById("session-desc").innerText = "Practice questions sequentially in correct order without time stress.";
         document.getElementById("start-btn").innerText = "Start Practice Session";
         document.getElementById("start-btn").classList.remove("hidden");
     } else if (tab === "exam") {
@@ -458,19 +510,21 @@ function updateExamLobby() {
     const startButton = document.getElementById("start-btn");
 
     if (!publishedExam || !publishedExam.isPublished) {
-        document.getElementById("session-desc").innerText = "No active exam is currently published by the administrator.";
+        document.getElementById("session-desc").innerText = "No live scheduled exam is currently published by the admin.";
         startButton.classList.add("hidden");
         return;
     }
 
     document.getElementById("session-desc").innerText =
-        "Active Exam: " + publishedExam.title +
-        ". Duration: " + publishedExam.duration +
-        " Mins. Questions: " + publishedExam.requiredCount +
-        ". Marking: +" + publishedExam.markPerCorrect +
-        " / -" + publishedExam.markPerWrong;
+        "Active Live Exam: " + publishedExam.title +
+        " | Duration: " + publishedExam.duration + " Mins" +
+        " | Questions: " + publishedExam.requiredCount;
     startButton.classList.remove("hidden");
-    startButton.innerText = "Start Scheduled Exam";
+    startButton.innerText = "Start Live Exam";
+}
+
+function getStorageKey() {
+    return "optim_progress_" + (currentLoggedInUser ? currentLoggedInUser.phone : "guest") + "_" + activeMode;
 }
 
 function startActiveSession() {
@@ -479,7 +533,7 @@ function startActiveSession() {
     let pool = masterQuestionPool;
     if (activeMode === "exam") {
         if (!publishedExam || !publishedExam.isPublished) {
-            alert("There is no active exam yet.");
+            alert("No active exam available.");
             return;
         }
         activeSessionExam = JSON.parse(JSON.stringify(publishedExam));
@@ -489,7 +543,7 @@ function startActiveSession() {
     }
 
     if (!pool.length) {
-        alert("No questions are available yet.");
+        alert("No questions available.");
         return;
     }
 
@@ -497,9 +551,37 @@ function startActiveSession() {
     document.getElementById("student-history-card").classList.add("hidden");
     document.getElementById("quiz-container").classList.remove("hidden");
 
-    activeStudentQuestions = shuffleArray(JSON.parse(JSON.stringify(pool)));
+    const savedProgress = localStorage.getItem(getStorageKey());
+    if (savedProgress) {
+        try {
+            const data = JSON.parse(savedProgress);
+            if (data && data.questions && data.questions.length > 0) {
+                activeStudentQuestions = data.questions;
+                studentAnswers = data.answers;
+                currentQuestionIndex = data.currentIndex;
+                elapsedSeconds = data.elapsedSeconds || 0;
+                
+                if (confirm("Detected interrupted session state due to network pause. Would you like to resume from where you left off (Question " + (currentQuestionIndex + 1) + ")?")) {
+                    startTimer();
+                    displayCurrentQuestion();
+                    if (activeMode === "exam") {
+                        document.getElementById("current-mode-label").innerText = "Live Exam (Resumed)";
+                        document.getElementById("btn-practice-ai").classList.add("hidden");
+                        document.getElementById("btn-finish-practice").classList.add("hidden");
+                        document.getElementById("btn-finish-exam").classList.remove("hidden");
+                    }
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error("Error reading saved progress", e);
+        }
+    }
+
+    activeStudentQuestions = JSON.parse(JSON.stringify(pool));
     currentQuestionIndex = 0;
     studentAnswers = new Array(activeStudentQuestions.length).fill(null);
+    elapsedSeconds = 0;
 
     if (activeMode === "exam") {
         document.getElementById("current-mode-label").innerText = "Live Exam";
@@ -519,10 +601,7 @@ function startActiveSession() {
 }
 
 function displayCurrentQuestion() {
-    if (!activeStudentQuestions.length) {
-        document.getElementById("q-text").innerText = "No questions available in repository.";
-        return;
-    }
+    if (!activeStudentQuestions.length) return;
 
     const question = activeStudentQuestions[currentQuestionIndex];
     document.getElementById("question-tracker").innerText =
@@ -549,12 +628,15 @@ function displayCurrentQuestion() {
     if (activeMode === "exam" && currentQuestionIndex === activeStudentQuestions.length - 1) {
         document.getElementById("btn-finish-exam").disabled = false;
     }
+
+    saveProgressState();
 }
 
 function selectOption(selectedIndex, buttonElement) {
     studentAnswers[currentQuestionIndex] = selectedIndex;
     document.querySelectorAll(".option-btn").forEach(button => button.classList.remove("selected"));
     buttonElement.classList.add("selected");
+    saveProgressState();
 }
 
 function nextQuestion() {
@@ -562,24 +644,36 @@ function nextQuestion() {
         currentQuestionIndex += 1;
         displayCurrentQuestion();
     } else {
-        alert("You have reached the end of the questions.");
+        alert("You have reached the final question. Click finish or submit.");
     }
+}
+
+function saveProgressState() {
+    if (!currentLoggedInUser) return;
+    const data = {
+        questions: activeStudentQuestions,
+        answers: studentAnswers,
+        currentIndex: currentQuestionIndex,
+        elapsedSeconds: elapsedSeconds
+    };
+    localStorage.setItem(getStorageKey(), JSON.stringify(data));
 }
 
 function startTimer() {
     clearInterval(timerInterval);
-    elapsedSeconds = 0;
     timerInterval = setInterval(() => {
         elapsedSeconds += 1;
         const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, "0");
         const seconds = String(elapsedSeconds % 60).padStart(2, "0");
         document.getElementById("student-timer").innerText = "⏱️ " + minutes + ":" + seconds;
+        if (elapsedSeconds % 5 === 0) saveProgressState();
     }, 1000);
 }
 
 async function finishSession() {
     if (isSubmitting) return;
     clearInterval(timerInterval);
+    localStorage.removeItem(getStorageKey());
 
     document.getElementById("quiz-container").classList.add("hidden");
     document.getElementById("review-container").classList.remove("hidden");
@@ -600,10 +694,10 @@ async function finishSession() {
         });
 
         document.getElementById("summary-heading").innerText = "Practice Session Complete!";
-        document.getElementById("summary-subtext").innerText = "Great practice effort. Practice more to master concepts.";
+        document.getElementById("summary-subtext").innerText = "Great practice effort.";
         document.getElementById("res-time").innerText = timeSpent + " Mins";
-        document.getElementById("score-label-title").innerText = "Score (Attended Questions)";
-        document.getElementById("res-score").innerText = correctInAttended + " / " + attendedAnswers.length + " Attended";
+        document.getElementById("score-label-title").innerText = "Score";
+        document.getElementById("res-score").innerText = correctInAttended + " / " + attendedAnswers.length;
         document.getElementById("exam-review-section").classList.add("hidden");
         return;
     }
@@ -630,7 +724,7 @@ async function finishSession() {
     const accuracy = maximumMarks ? Math.max(0, Math.round((totalMarks / maximumMarks) * 100)) : 0;
 
     document.getElementById("summary-heading").innerText = "Exam Submitted!";
-    document.getElementById("summary-subtext").innerText = "Your exam result has been added to your Previous Exam History.";
+    document.getElementById("summary-subtext").innerText = "Your submission is recorded in exam history.";
     document.getElementById("res-time").innerText = timeSpent + " Mins";
     document.getElementById("score-label-title").innerText = "Final Exam Score";
     document.getElementById("res-score").innerText = totalMarks + " / " + maximumMarks + " Marks";
@@ -642,7 +736,7 @@ async function finishSession() {
         id: resultId,
         studentName: currentLoggedInUser.name,
         phone: currentLoggedInUser.phone,
-        examTitle: exam.title || "Scheduled Exam",
+        examTitle: exam.title || "Live Exam",
         score: totalMarks + "/" + maximumMarks,
         accuracy,
         timeSpent,
@@ -655,7 +749,7 @@ async function finishSession() {
         await firebaseApi.set(portalRef("examResults/" + resultId), examRecord);
     } catch (error) {
         console.error("Could not save exam result:", error);
-        alert("Your result could not be synchronized. Check the Firebase connection.");
+        alert("Result sync failed.");
     } finally {
         isSubmitting = false;
     }
@@ -688,18 +782,18 @@ function renderStudentExamHistory() {
     const myExams = studentExamResults.filter(record => record.phone === currentLoggedInUser.phone);
 
     if (!myExams.length) {
-        container.innerHTML = "<p style='color:var(--text-sub);'>You have not completed any scheduled exams yet.</p>";
+        container.innerHTML = "<p style='color:var(--text-sub);'>No completed exams found.</p>";
         return;
     }
 
     myExams.forEach((exam, index) => {
         container.innerHTML += "<div class='review-card' style='display:flex; justify-content:space-between; align-items:center;'>" +
             "<div><h4 style='color:var(--accent-teal);'>" + escapeHtml(exam.examTitle) + "</h4>" +
-            "<p style='font-size:0.85rem; color:var(--text-sub);'>Attempted Date: " + escapeHtml(exam.date) +
-            " | Time Spent: " + escapeHtml(exam.timeSpent) + " Mins</p>" +
+            "<p style='font-size:0.85rem; color:var(--text-sub);'>Date: " + escapeHtml(exam.date) +
+            " | Time Taken: " + escapeHtml(exam.timeSpent) + " Mins</p>" +
             "<p style='font-size:0.9rem; margin-top:5px;'>Score: <b style='color:var(--success);'>" + escapeHtml(exam.score) +
             "</b> (Accuracy: " + escapeHtml(exam.accuracy) + "%)</p></div>" +
-            "<button class='btn btn-secondary' style='width:auto; padding:8px 18px; font-size:0.85rem;' onclick='viewHistoryExamDetail(" + index + ")'>View Detailed Answers</button>" +
+            "<button class='btn btn-secondary' style='width:auto; padding:8px 18px; font-size:0.85rem;' onclick='viewHistoryExamDetail(" + index + ")'>View Answers</button>" +
             "</div>";
     });
 }
@@ -711,30 +805,26 @@ function viewHistoryExamDetail(index) {
     if (!record) return;
 
     document.getElementById("hist-modal-title").innerText = record.examTitle;
-    document.getElementById("hist-modal-meta").innerText =
-        "Date: " + record.date + " | Score: " + record.score + " (" + record.accuracy + "%)";
+    document.getElementById("hist-modal-meta").innerText = "Date: " + record.date + " | Score: " + record.score;
     renderExamReviewList("hist-modal-questions", record.questions, record.userAnswers);
     document.getElementById("history-modal").classList.remove("hidden");
 }
 
 function generateAIQuestionsForStudent() {
+    const nextId = activeStudentQuestions.length + 1;
     const extraQuestion = {
-        cleanQuestion: "What primary rule applies to provisions under standard financial codes?",
-        options: [
-            "Recognize provision when present obligation exists",
-            "Ignore contingent liabilities entirely",
-            "Classify always under revenue reserves",
-            "Amortize as operational goodwill"
-        ],
+        id: nextId,
+        cleanQuestion: "Additional generated practice question " + nextId + "?",
+        options: ["Option A correct", "Option B alternative", "Option C condition", "Option D none"],
         correct: 0
     };
 
     activeStudentQuestions.push(extraQuestion);
-    alert("New practice question added to your current session.");
+    alert("New sequential practice question added.");
     displayCurrentQuestion();
 }
 
-// ANALYTICS AND ARCHIVE
+// ANALYTICS & ARCHIVE
 function renderAnalyticsLeaderboard() {
     const table = document.getElementById("student-results-table");
     const topList = document.getElementById("top-performers-list");
@@ -744,7 +834,7 @@ function renderAnalyticsLeaderboard() {
     weakList.innerHTML = "";
 
     if (!studentExamResults.length) {
-        table.innerHTML = "<tr><td colspan='6'>No student exams recorded yet.</td></tr>";
+        table.innerHTML = "<tr><td colspan='6'>No student results recorded yet.</td></tr>";
         return;
     }
 
@@ -752,15 +842,14 @@ function renderAnalyticsLeaderboard() {
         table.innerHTML += "<tr>" +
             "<td><b>" + escapeHtml(record.studentName) + "</b></td>" +
             "<td>" + escapeHtml(record.phone) + "</td>" +
-            "<td>" + escapeHtml(record.examTitle || "Live Exam") + "</td>" +
+            "<td>" + escapeHtml(record.examTitle || "Exam") + "</td>" +
             "<td><b>" + escapeHtml(record.score) + "</b></td>" +
             "<td>" + escapeHtml(record.accuracy) + "%</td>" +
             "<td>" + escapeHtml(record.timeSpent) + " Mins</td>" +
             "</tr>";
 
         const person = "<div style='margin-bottom:6px;'><b>" + escapeHtml(record.studentName) +
-            "</b> (" + escapeHtml(record.phone) + ") - " + escapeHtml(record.examTitle) +
-            ": " + escapeHtml(record.score) + " (" + escapeHtml(record.accuracy) + "%)</div>";
+            "</b> - " + escapeHtml(record.score) + " (" + escapeHtml(record.accuracy) + "%)</div>";
 
         if (record.accuracy >= 75) {
             topList.innerHTML += person;
@@ -775,7 +864,7 @@ function renderArchive() {
     container.innerHTML = "";
 
     if (!examArchives.length) {
-        container.innerHTML = "<p style='color:var(--text-sub);'>No exams archived yet.</p>";
+        container.innerHTML = "<p style='color:var(--text-sub);'>No archived exams found.</p>";
         return;
     }
 
@@ -789,14 +878,11 @@ function renderArchive() {
 
         container.innerHTML += "<div class='archive-card'>" +
             "<div style='display:flex; justify-content:space-between; align-items:center;'>" +
-            "<div><h4 style='color:var(--accent-teal); font-size:1.1rem;'>Exam " + (examIndex + 1) +
-            ": " + escapeHtml(exam.title) + "</h4>" +
-            "<p style='font-size:0.85rem; color:var(--text-sub); margin-top:3px;'>Published Date: <b>" +
-            escapeHtml(exam.date) + "</b> | Questions: <b>" + escapeHtml(exam.requiredCount) +
-            "</b> | Marking: <b>+" + escapeHtml(exam.markPerCorrect) + " / -" +
-            escapeHtml(exam.markPerWrong) + "</b></p></div>" +
+            "<div><h4 style='color:var(--accent-teal); font-size:1.1rem;'>" + escapeHtml(exam.title) + "</h4>" +
+            "<p style='font-size:0.85rem; color:var(--text-sub); margin-top:3px;'>Date: <b>" +
+            escapeHtml(exam.date) + "</b> | Questions: <b>" + escapeHtml(exam.requiredCount) + "</b></p></div>" +
             "<button class='btn btn-secondary' style='width:auto; padding:8px 18px; font-size:0.85rem;' onclick='toggleArchiveDetail(" +
-            examIndex + ")'>View Exam Questions</button></div>" +
+            examIndex + ")'>View Questions</button></div>" +
             "<div id='archive-content-" + examIndex +
             "' class='hidden' style='margin-top:20px; padding-top:15px; border-top:1px solid rgba(255,255,255,0.1);'>" +
             questionsHtml + "</div></div>";
@@ -809,19 +895,13 @@ function toggleArchiveDetail(index) {
 }
 
 function exportAnalyticsPDF() {
-    if (!window.html2pdf) {
-        alert("The PDF export library did not load.");
-        return;
-    }
-    window.html2pdf().from(document.getElementById("analytics-pdf-content")).save("Optim_Student_Performance_Leaderboard.pdf");
+    if (!window.html2pdf) return;
+    window.html2pdf().from(document.getElementById("analytics-pdf-content")).save("Optim_Analytics_Report.pdf");
 }
 
 function exportArchivePDF() {
-    if (!window.html2pdf) {
-        alert("The PDF export library did not load.");
-        return;
-    }
-    window.html2pdf().from(document.getElementById("archive-pdf-content")).save("Optim_Previous_Exam_Question_Bank.pdf");
+    if (!window.html2pdf) return;
+    window.html2pdf().from(document.getElementById("archive-pdf-content")).save("Optim_Exam_Archive.pdf");
 }
 
 function resetStudentPortalView() {
@@ -833,26 +913,16 @@ function resetStudentPortalView() {
     document.getElementById("student-timer").innerText = "⏱️ 00:00";
 }
 
-function shuffleArray(array) {
-    for (let index = array.length - 1; index > 0; index -= 1) {
-        const randomIndex = Math.floor(Math.random() * (index + 1));
-        const savedValue = array[index];
-        array[index] = array[randomIndex];
-        array[randomIndex] = savedValue;
-    }
-    return array;
-}
-
 function openPreviewModal() {
     const list = document.getElementById("preview-questions-list");
     list.innerHTML = "";
 
     if (!masterQuestionPool.length) {
-        list.innerHTML = "<p>No questions generated yet. Process PDF materials first.</p>";
+        list.innerHTML = "<p>No questions generated yet.</p>";
     } else {
         masterQuestionPool.forEach((question, index) => {
             list.innerHTML += "<div style='margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;'>" +
-                "<b style='color:var(--accent-teal);'>Master Q" + (index + 1) + ":</b> " +
+                "<b style='color:var(--accent-teal);'>Q" + (index + 1) + ":</b> " +
                 escapeHtml(question.cleanQuestion) + "<br>" +
                 "<span style='color:var(--success); font-size:0.85rem;'>Correct Answer Key: " +
                 escapeHtml(question.options[question.correct]) + "</span></div>";

@@ -1,9 +1,9 @@
 :root {
     --bg-color: #0b0f19;
     --card-bg: #151d30;
-    --primary-teal: #0b5559;  /* Optim Teal Color */
-    --accent-teal: #149198;   /* Bright Accent Teal */
-    --accent-yellow: #f5b800; /* Optim Yellow Color */
+    --primary-teal: #0b5559;  
+    --accent-teal: #149198;   
+    --accent-yellow: #f5b800; 
     --text-main: #f8fafc;
     --text-sub: #94a3b8;
     --success: #22c55e;
@@ -40,7 +40,6 @@ body {
     margin-bottom: 25px;
 }
 
-/* LOGO STYLES */
 .logo-box {
     display: flex;
     align-items: center;
@@ -50,24 +49,6 @@ body {
 .login-logo {
     margin-bottom: 12px;
     justify-content: center;
-}
-
-.login-logo img {
-    width: 80px;
-    height: 80px;
-    object-fit: contain;
-}
-
-.header-logo img {
-    max-width: 200px;
-    height: 48px;
-    object-fit: contain;
-}
-
-.header-title-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 18px;
 }
 
 .top-nav { 
@@ -190,7 +171,6 @@ body {
     display: none !important; 
 }
 
-/* TABS */
 .tab-buttons { 
     display: flex; 
     gap: 12px; 
@@ -261,7 +241,6 @@ body {
     background: rgba(11, 85, 89, 0.5); 
 }
 
-/* TABLES & CARDS */
 table { 
     width: 100%; 
     border-collapse: collapse; 

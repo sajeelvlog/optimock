@@ -19,17 +19,24 @@
             <div class="logo-box login-logo">
                 <span class="brand-title">OPTIM</span>
             </div>
-            <h2 style="margin-bottom: 20px; font-size: 1.5rem;">Portal Login</h2>
+            <h2 id="login-title" style="margin-bottom: 20px; font-size: 1.5rem;">Portal Login</h2>
+            
+            <!-- Step 1: Username / Phone -->
             <form id="login-form">
                 <div class="input-group">
-                    <label>Username / Phone Number</label>
-                    <input type="text" id="username" placeholder="Enter phone or admin" required>
+                    <label id="login-field-label">Registered Mobile Number / Admin</label>
+                    <input type="text" id="username" placeholder="Enter mobile number or admin" required>
                 </div>
-                <div class="input-group">
+                <div class="input-group" id="password-group">
                     <label>Password</label>
-                    <input type="password" id="password" placeholder="Enter password" required>
+                    <input type="password" id="password" placeholder="Enter password">
                 </div>
-                <button type="submit" class="btn">Login to Portal</button>
+                <div class="input-group hidden" id="otp-group">
+                    <label>Enter 6-Digit OTP</label>
+                    <input type="text" id="otp-input" placeholder="e.g. 123456" maxlength="6">
+                </div>
+                <button type="submit" class="btn" id="login-action-btn">Proceed / Send OTP</button>
+                <button type="button" class="btn btn-secondary hidden" id="back-to-phone-btn" style="margin-top: 10px;" onclick="resetLoginStep()">Back to Mobile Number</button>
             </form>
         </div>
 
@@ -61,7 +68,7 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div class="input-group">
                             <label>Exam Title</label>
-                            <input type="text" id="exam-title-input" value="Standard Physics / Commerce Test">
+                            <input type="text" id="exam-title-input" value="Standard Assessment">
                         </div>
                         <div class="input-group">
                             <label>Number of Questions to Generate</label>
@@ -85,9 +92,9 @@
                     </div>
 
                     <div style="display: flex; gap: 15px; margin-top: 15px;">
-                        <button class="btn btn-warning" onclick="generatePDFQuestions()">⚙️ Process & Generate Master Pool</button>
+                        <button class="btn btn-warning" onclick="generatePDFQuestions()">⚙️ Process & Build Structured Pool</button>
                         <button class="btn btn-secondary" onclick="openPreviewModal()">👁️ Preview Master Pool (<span id="preview-count">0</span>)</button>
-                        <button class="btn btn-success" onclick="publishExamToStudents()">🚀 Publish Live Exam to Students</button>
+                        <button class="btn btn-success" onclick="publishExamToStudents()">🚀 Publish Live Exam for All Candidates</button>
                     </div>
                 </div>
 
@@ -131,7 +138,7 @@
                 <!-- ADMIN TAB 3: STUDENTS MANAGER -->
                 <div id="adm-sec-students" class="hidden">
                     <h3 style="margin-bottom: 15px;">Register New Student</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 150px; gap: 15px; align-items: flex-end; margin-bottom: 25px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 150px; gap: 15px; align-items: flex-end; margin-bottom: 25px;">
                         <div class="input-group" style="margin-bottom:0;">
                             <label>Full Name</label>
                             <input type="text" id="new-std-name" placeholder="Student name">
@@ -139,10 +146,6 @@
                         <div class="input-group" style="margin-bottom:0;">
                             <label>Phone Number</label>
                             <input type="text" id="new-std-phone" placeholder="10-digit phone">
-                        </div>
-                        <div class="input-group" style="margin-bottom:0;">
-                            <label>Password</label>
-                            <input type="text" id="new-std-pass" placeholder="Password">
                         </div>
                         <button class="btn btn-success" onclick="registerNewStudent()">Add Student</button>
                     </div>
@@ -153,12 +156,10 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Phone Number</th>
-                                <th>Password</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
-                        <tbody id="registered-students-table">
-                        </tbody>
+                        <tbody id="registered-students-table"></tbody>
                     </table>
                 </div>
 
